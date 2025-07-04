@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from telegram import Update, Message, Chat, User as TelegramUser
-from telegram.ext import CallbackContext, ContextTypes
+from telegram.ext import CallbackContext
 
 # Disable logging during tests
 logging.disable(logging.CRITICAL)
@@ -14,7 +14,7 @@ logging.disable(logging.CRITICAL)
 def mock_update():
     """Create a mock Update object."""
     update = AsyncMock(spec=Update)
-    update.effective_chat = AsyncMock(spec=Chat, id=12345)
+    update.effective_chat = AsyncMock(spec=Chat, id=12345, type="private")
     update.effective_user = AsyncMock(spec=TelegramUser, id=12345, first_name="Test", is_bot=False)
     update.message = AsyncMock(spec=Message, text="/start", chat=update.effective_chat, from_user=update.effective_user)
     return update
@@ -40,7 +40,7 @@ def mock_application():
     return app
 
 @pytest.fixture(scope="session")
-event_loop():
+def event_loop():
     """Create an instance of the default event loop for each test case."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
