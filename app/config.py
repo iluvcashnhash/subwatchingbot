@@ -1,26 +1,31 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+from typing import Optional, List
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    """Application settings loaded from environment variables."""
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore"
+    )
     
-    # Bot configuration
+    # Required settings (no defaults)
     BOT_TOKEN: str
-    ADMIN_IDS: list[int]
+    GIGACHAT_TOKEN: str
+    MONGODB_URI: str
     
-    # MongoDB configuration
-    MONGODB_URL: str = "mongodb://mongo:27017"
-    DB_NAME: str = "subwatch_bot"
+    # Optional settings with defaults
+    DB_NAME: str = "subwatch"
+    TZ: str = "Asia/Jerusalem"
     
-    # GigaChat API
-    GIGACHAT_CREDENTIALS: Optional[str] = None
+    # For backward compatibility
+    @property
+    def GIGACHAT_CREDENTIALS(self) -> str:
+        return self.GIGACHAT_TOKEN
     
-    # Webhook settings (if using webhooks)
-    WEBHOOK_URL: Optional[str] = None
-    WEBHOOK_PATH: Optional[str] = None
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    @property
+    def MONGODB_URL(self) -> str:
+        return self.MONGODB_URI
 
+# Global settings instance
 settings = Settings()
