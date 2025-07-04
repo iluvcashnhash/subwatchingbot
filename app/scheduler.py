@@ -1,181 +1,181 @@
-import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-from telegram import Bot
-
-from .models import Subscription, User
+from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, Optional
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CallbackContext
+from .models import Subscription
 from .db import db
 
 logger = logging.getLogger(__name__)
 
-class SubscriptionScheduler:
-    def __init__(self, bot: Bot):
-        self.bot = bot
-        self.scheduler = AsyncIOScheduler()
-        self._jobs: Dict[str, str] = {}  # subscription_id -> job_id
+# Reminder offsets in days
+REMINDER_OFFSETS = [7, 3, 1]
+
+# Callback data prefix for payment confirmation
+PAYMENT_CONFIRM_PREFIX = "confirm_payment_"
+
+
+def schedule_reminders(sub: Subscription, chat_id: int, app: Application) -> None:
+    """
+    Schedule reminder jobs for a subscription.
     
-    async def start(self):
-        """Start the scheduler and load existing subscriptions."""
-        logger.info("Starting subscription scheduler...")
-        await self._load_existing_subscriptions()
-        self.scheduler.start()
-        logger.info("Subscription scheduler started")
+    Args:
+        sub: The subscription to schedule reminders for
+        chat_id: The chat ID to send reminders to
+        app: The application instance for job queue access
+    """
+    if not sub.next_payment:
+        logger.warning(f"No next_payment date for subscription {sub.id}, skipping reminders")
+        return
+        
+    job_queue = app.job_queue
+    if not job_queue:
+        logger.error("No job queue available in application")
+        return
     
-    async def stop(self):
-        """Stop the scheduler."""
-        self.scheduler.shutdown()
-        logger.info("Subscription scheduler stopped")
+    # Clear any existing jobs for this subscription
+    for job in job_queue.jobs():
+        if job.data and job.data.get('sub_id') == str(sub.id):
+            job.schedule_removal()
     
-    async def _load_existing_subscriptions(self):
-        """Load existing subscriptions from the database and schedule them."""
-        subscriptions_collection = db.get_collection("subscriptions")
-        cursor = subscriptions_collection.find({"status": "active"})
+    # Schedule new reminder jobs
+    for offset_days in REMINDER_OFFSETS:
+        trigger_date = sub.next_payment - timedelta(days=offset_days)
         
-        async for sub_data in cursor:
-            try:
-                subscription = Subscription(**sub_data)
-                await self.schedule_subscription_notification(subscription)
-            except Exception as e:
-                logger.error(f"Error loading subscription {sub_data.get('_id')}: {e}")
-    
-    async def schedule_subscription_notification(self, subscription: Subscription):
-        """Schedule a notification for a subscription."""
-        job_id = f"sub_{subscription.id}"
-        
-        # Remove existing job if it exists
-        if job_id in self._jobs:
-            self.scheduler.remove_job(self._jobs[job_id])
-        
-        # Calculate next run time
-        now = datetime.utcnow()
-        next_run = subscription.next_billing_date
-        
-        # If the next billing date is in the past, calculate the next occurrence
-        if next_run < now:
-            next_run = self._calculate_next_billing_date(subscription)
-        
-        # Schedule the job
-        trigger = self._create_trigger(subscription)
-        
-        job = self.scheduler.add_job(
-            self._send_notification,
-            trigger=trigger,
-            id=job_id,
-            args=[subscription],
-            next_run_time=next_run
+        # Skip if the reminder would be in the past
+        if trigger_date < datetime.now(timezone.utc):
+            continue
+            
+        job_queue.run_once(
+            callback=reminder_callback,
+            when=trigger_date,
+            data={
+                'chat_id': chat_id,
+                'sub_id': str(sub.id),
+                'offset_days': offset_days
+            },
+            name=f"reminder_{sub.id}_{offset_days}d"
         )
         
-        self._jobs[subscription.id] = job_id
-        logger.info(f"Scheduled notification for subscription {subscription.id} to run at {next_run}")
-    
-    def _create_trigger(self, subscription: Subscription):
-        """Create an APScheduler trigger based on subscription frequency."""
-        if subscription.frequency == "daily":
-            return CronTrigger(hour=9, minute=0)  ##### 9 AM daily
-        elif subscription.frequency == "weekly":
-            return CronTrigger(day_of_week=subscription.next_billing_date.weekday(), hour=9, minute=0)
-        elif subscription.frequency == "monthly":
-            return CronTrigger(day=subscription.next_billing_date.day, hour=9, minute=0)
-        elif subscription.frequency == "yearly":
-            return CronTrigger(
-                month=subscription.next_billing_date.month,
-                day=subscription.next_billing_date.day,
-                hour=9,
-                minute=0
-            )
-        else:
-            # Default to daily if frequency is not recognized
-            return CronTrigger(hour=9, minute=0)
-    
-    def _calculate_next_billing_date(self, subscription: Subscription) -> datetime:
-        """Calculate the next billing date based on subscription frequency."""
-        now = datetime.utcnow()
-        next_date = subscription.next_billing_date
+        logger.info(
+            f"Scheduled {offset_days} day reminder for subscription {sub.id} "
+            f"(service: {sub.service}) to trigger on {trigger_date}"
+        )
+
+
+async def reminder_callback(context: CallbackContext) -> None:
+    """
+    Callback for sending reminder messages and handling payment confirmation.
+    """
+    job = context.job
+    if not job or not job.data:
+        logger.error("Reminder job called without valid data")
+        return
         
-        while next_date < now:
-            if subscription.frequency == "daily":
-                next_date += timedelta(days=1)
-            elif subscription.frequency == "weekly":
-                next_date += timedelta(weeks=1)
-            elif subscription.frequency == "monthly":
-                # Handle month overflow
-                next_month = next_date.month + 1
-                year = next_date.year
-                if next_month > 12:
-                    next_month = 1
-                    year += 1
-                next_date = next_date.replace(month=next_month, year=year)
-            elif subscription.frequency == "yearly":
-                next_date = next_date.replace(year=next_date.year + 1)
-            else:
-                # Default to daily if frequency is not recognized
-                next_date += timedelta(days=1)
+    chat_id = job.data.get('chat_id')
+    sub_id = job.data.get('sub_id')
+    offset_days = job.data.get('offset_days')
+    
+    if not all([chat_id, sub_id, offset_days is not None]):
+        logger.error(f"Incomplete job data: {job.data}")
+        return
+    
+    # Get subscription from database
+    users_collection = db.get_collection("users")
+    user_data = await users_collection.find_one(
+        {"subs._id": sub_id},
+        {"subs.$": 1}
+    )
+    
+    if not user_data or not user_data.get('subs'):
+        logger.error(f"Subscription {sub_id} not found or error accessing database")
+        return
         
-        return next_date
+    sub_data = user_data['subs'][0]
+    sub = Subscription(**sub_data)
     
-    async def _send_notification(self, subscription: Subscription):
-        """Send notification about upcoming subscription renewal."""
-        try:
-            user_collection = db.get_collection("users")
-            user_data = await user_collection.find_one({"telegram_id": subscription.user_id})
-            
-            if not user_data:
-                logger.error(f"User {subscription.user_id} not found for subscription {subscription.id}")
-                return
-            
-            user = User(**user_data)
-            
-            message = (
-                f"🔔 <b>Upcoming Subscription Renewal</b>\n\n"
-                f"<b>{subscription.name}</b>\n"
-                f"Amount: {subscription.amount} {subscription.currency}\n"
-                f"Next billing date: {subscription.next_billing_date.strftime('%Y-%m-%d')}\n"
-                f"Frequency: {subscription.frequency.capitalize()}"
+    # Create inline keyboard for payment confirmation
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "✅ Отметить оплаченной",
+                callback_data=f"{PAYMENT_CONFIRM_PREFIX}{sub_id}"
             )
-            
-            await self.bot.send_message(
-                chat_id=user.telegram_id,
-                text=message,
-                parse_mode='HTML'
-            )
-            
-            # Update next billing date in the database
-            subscriptions_collection = db.get_collection("subscriptions")
-            next_billing_date = self._calculate_next_billing_date(subscription)
-            
-            await subscriptions_collection.update_one(
-                {"_id": subscription.id},
-                {"$set": {"next_billing_date": next_billing_date}}
-            )
-            
-            # Reschedule the job for the next billing date
-            await self.schedule_subscription_notification(
-                Subscription(
-                    **{
-                        **subscription.dict(),
-                        "next_billing_date": next_billing_date
-                    }
-                )
-            )
-            
-        except Exception as e:
-            logger.error(f"Error sending notification for subscription {subscription.id}: {e}")
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
     
-    async def add_subscription(self, subscription: Subscription):
-        """Add a new subscription to the scheduler."""
-        await self.schedule_subscription_notification(subscription)
+    # Format amount with 2 decimal places if it's a whole number
+    amount = int(sub.amount) if sub.amount == int(sub.amount) else sub.amount
     
-    async def update_subscription(self, subscription: Subscription):
-        """Update an existing subscription in the scheduler."""
-        await self.schedule_subscription_notification(subscription)
+    # Send reminder message
+    message = (
+        f"🔔 Через {offset_days} дн спишется "
+        f"{amount}{sub.currency} за {sub.service}"
+    )
     
-    async def remove_subscription(self, subscription_id: str):
-        """Remove a subscription from the scheduler."""
-        job_id = f"sub_{subscription_id}"
-        if job_id in self._jobs:
-            self.scheduler.remove_job(self._jobs[job_id])
-            del self._jobs[subscription_id]
-            logger.info(f"Removed subscription {subscription_id} from scheduler")
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=message,
+            reply_markup=reply_markup
+        )
+    except Exception as e:
+        logger.error(f"Failed to send reminder for subscription {sub_id}: {e}")
+
+
+async def handle_payment_confirmation(update: Update, context: CallbackContext) -> None:
+    """
+    Handle payment confirmation button press.
+    Updates next_payment date and reschedules reminders.
+    """
+    query = update.callback_query
+    await query.answer()
+    
+    if not query.data or not query.data.startswith(PAYMENT_CONFIRM_PREFIX):
+        return
+    
+    sub_id = query.data[len(PAYMENT_CONFIRM_PREFIX):]
+    chat_id = query.message.chat_id
+    
+    # Get subscription from database
+    users_collection = db.get_collection("users")
+    user_data = await users_collection.find_one(
+        {"subs._id": sub_id},
+        {"subs.$": 1}
+    )
+    
+    if not user_data or not user_data.get('subs'):
+        logger.error(f"Subscription {sub_id} not found")
+        await query.edit_message_text("❌ Ошибка: подписка не найдена")
+        return
+    
+    # Update subscription's next_payment date
+    sub_data = user_data['subs'][0]
+    sub = Subscription(**sub_data)
+    
+    new_next_payment = sub.next_payment + timedelta(days=sub.period_days)
+    
+    # Update in database
+    result = await users_collection.update_one(
+        {"tg_id": user_data['tg_id'], "subs._id": sub_id},
+        {"$set": {"subs.$.next_payment": new_next_payment}}
+    )
+    
+    if result.modified_count > 0:
+        # Reschedule reminders for the new payment date
+        schedule_reminders(
+            Subscription(**{**sub_data, "next_payment": new_next_payment}),
+            chat_id,
+            context.application
+        )
+        
+        # Update message to show confirmation
+        amount = int(sub.amount) if sub.amount == int(sub.amount) else sub.amount
+        await query.edit_message_text(
+            f"✅ Оплата за {sub.service} ({amount}{sub.currency}) отмечена. "
+            f"Следующее списание: {new_next_payment.strftime('%Y-%m-%d')}",
+            reply_markup=None
+        )
+    else:
+        await query.edit_message_text("❌ Не удалось обновить дату следующего платежа")
