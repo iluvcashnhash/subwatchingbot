@@ -1,50 +1,20 @@
-version: '3.8'
+version: '3.9'
 
 services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+
   bot:
     build: .
-    restart: unless-stopped
     depends_on:
       - mongo
-    env_file: .env
     environment:
-      - MONGODB_URL=mongodb://mongo:27017
-    volumes:
-      - ./data/bot:/app/data
-    networks:
-      - subwatch-net
-
-  mongo:
-    image: mongo:6.0
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb_data:/data/db
-      - ./init-mongo.js:/docker-entrypoint-initdb.d/init-mongo.js
-    environment:
-      - MONGO_INITDB_DATABASE=subwatch_bot
-    networks:
-      - subwatch-net
-
-  mongo-express:
-    image: mongo-express:1.0
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    environment:
-      - ME_CONFIG_MONGODB_SERVER=mongo
-      - ME_CONFIG_BASICAUTH_USERNAME=admin
-      - ME_CONFIG_BASICAUTH_PASSWORD=admin
-    depends_on:
-      - mongo
-    networks:
-      - subwatch-net
-
-networks:
-  subwatch-net:
-    driver: bridge
+      - BOT_TOKEN=${BOT_TOKEN}
+      - GIGACHAT_TOKEN=${GIGACHAT_TOKEN}
+      - MONGODB_URI=mongodb://mongo:27017
 
 volumes:
-  mongodb_data:
-    driver: local
+  mongo_data:
