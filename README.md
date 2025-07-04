@@ -14,7 +14,7 @@ Track subscriptions with natural language and get payment reminders.
 
 - Docker and Docker Compose
 - Telegram Bot Token from [@BotFather](https://t.me/botfather)
-- GigaChat token (for NLP features)
+- GigaChat credentials (Client ID, Scope, Secret Key)
 
 ## 🚀 Quick Start
 
@@ -56,7 +56,9 @@ docker compose exec -T mongo mongorestore --archive < backup_20230704.archive
 ## 📝 .env.sample
 ```
 BOT_TOKEN=your_telegram_bot_token
-GIGACHAT_TOKEN=your_gigachat_token
+GIGACHAT_CLIENT_ID=your_gigachat_client_id
+GIGACHAT_SCOPE=GIGACHAT_API_PERS
+GIGACHAT_SECRET_KEY=your_gigachat_secret_key
 MONGODB_URI=mongodb://mongo:27017
 DB_NAME=subwatch
 TZ=Asia/Jerusalem

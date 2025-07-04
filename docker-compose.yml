@@ -13,7 +13,9 @@ services:
       - mongo
     environment:
       - BOT_TOKEN=${BOT_TOKEN}
-      - GIGACHAT_TOKEN=${GIGACHAT_TOKEN}
+      - GIGACHAT_CLIENT_ID=${GIGACHAT_CLIENT_ID}
+      - GIGACHAT_SCOPE=${GIGACHAT_SCOPE}
+      - GIGACHAT_SECRET_KEY=${GIGACHAT_SECRET_KEY}
       - MONGODB_URI=mongodb://mongo:27017
 
 volumes:

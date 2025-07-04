@@ -159,7 +159,7 @@ async def get_nlu_service() -> NLUService:
     """Get or create the global NLU service instance."""
     global nlu_service
     if nlu_service is None:
-        if not settings.GIGACHAT_TOKEN:
-            raise ValueError("GIGACHAT_TOKEN is not configured")
-        nlu_service = NLUService(settings.GIGACHAT_TOKEN)
+        if not settings.GIGACHAT_SECRET_KEY:
+            raise ValueError("GIGACHAT_SECRET_KEY is not configured")
+        nlu_service = NLUService(settings.GIGACHAT_SECRET_KEY)
     return nlu_service

@@ -11,17 +11,24 @@ class Settings(BaseSettings):
     
     # Required settings (no defaults)
     BOT_TOKEN: str
-    GIGACHAT_TOKEN: str
+    GIGACHAT_CLIENT_ID: str
+    GIGACHAT_SCOPE: str
+    GIGACHAT_SECRET_KEY: str
     MONGODB_URI: str
     
     # Optional settings with defaults
     DB_NAME: str = "subwatch"
     TZ: str = "Asia/Jerusalem"
     
-    # For backward compatibility
+    # Convenience property to gather GigaChat credentials as dict
     @property
-    def GIGACHAT_CREDENTIALS(self) -> str:
-        return self.GIGACHAT_TOKEN
+    def GIGACHAT_CREDENTIALS(self) -> dict[str, str]:
+        """Return GigaChat credentials as a dictionary for easy use."""
+        return {
+            "client_id": self.GIGACHAT_CLIENT_ID,
+            "scope": self.GIGACHAT_SCOPE,
+            "secret_key": self.GIGACHAT_SECRET_KEY,
+        }
     
     @property
     def MONGODB_URL(self) -> str:
