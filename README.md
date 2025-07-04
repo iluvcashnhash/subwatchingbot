@@ -1,106 +1,67 @@
-# Telegram Subscription Tracker Bot
+# SubWatch Bot
 
-A Telegram bot to help you track and manage your subscriptions with reminders for upcoming renewals.
+Track subscriptions with natural language and get payment reminders.
 
-## Features
+## ✨ Features
 
-- 📅 Track subscription renewals
-- 🔔 Get reminders before subscriptions renew
-- 💰 Monitor monthly expenses
-- 📊 View subscription statistics
-- 🤖 Natural language processing for easy interaction
+- Add subscriptions with natural language
+- Get reminders before payments are due
+- Track costs and payment history
+- Simple commands and natural input
+- Self-hosted with Docker
 
 ## Prerequisites
 
 - Docker and Docker Compose
-- Python 3.12 (if running without Docker)
-- A Telegram Bot Token from [@BotFather](https://t.me/botfather)
+- Telegram Bot Token from [@BotFather](https://t.me/botfather)
+- GigaChat token (for NLP features)
 
-## Quick Start with Docker (Recommended)
-
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd subwatch_bot
-   ```
-
-2. Create a `.env` file in the project root with your configuration:
-   ```env
-   # Required
-   BOT_TOKEN=your_telegram_bot_token
-   ADMIN_IDS=123456789,987654321  # Comma-separated list of admin user IDs
-   
-   # Optional
-   MONGODB_URL=mongodb://mongo:27017
-   DB_NAME=subwatch_bot
-   GIGACHAT_CREDENTIALS=your_gigachat_credentials  # Optional for enhanced NLP
-   ```
-
-3. Build and start the services:
-   ```bash
-   docker compose up -d --build
-   ```
-
-4. The bot should now be running. Open Telegram and start a chat with your bot.
-
-## Running Without Docker
-
-1. Install Python 3.12 and MongoDB
-
-2. Create and activate a virtual environment:
-   ```bash
-   python3.12 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Create a `.env` file as shown above
-
-5. Run the bot:
-   ```bash
-   python -m app.main
-   ```
-
-## Available Commands
-
-- `/start` - Start the bot and show welcome message
-- `/help` - Show help information
-- `/add` - Add a new subscription
-- `/list` - List all your subscriptions
-- `/delete` - Delete a subscription
-- `/stats` - Show subscription statistics
-
-## Development
-
-### Running Tests
+## 🚀 Quick Start
 
 ```bash
-pytest tests/
+git clone https://github.com/yourusername/subwatchingbot.git
+cd subwatchingbot
+cp .env.sample .env  # Edit with your tokens
+docker compose up -d --build
 ```
 
-### Code Style
+## 🤖 Commands
 
-This project uses `black` for code formatting and `isort` for import sorting.
+- `/start` - Start the bot
+- `/help` - Show help
+- `/add` - Add subscription
+- `/list` - Show subscriptions
+- `/delete` - Remove subscription
 
+## 💬 Natural Language Examples
+
+- "Add Netflix 1000₽ monthly"
+- "I pay 15$ for Spotify every month"
+- "Delete my Netflix subscription"
+- "Show my subscriptions"
+- "How much do I spend monthly?"
+
+## 🔄 Database Backup
+
+Backup:
 ```bash
-black .
-isort .
+docker compose exec mongo mongodump --archive > backup_$(date +%Y%m%d).archive
 ```
 
-## Environment Variables
+Restore:
+```bash
+docker compose exec -T mongo mongorestore --archive < backup_20230704.archive
+```
 
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `BOT_TOKEN` | Yes | - | Your Telegram bot token |
-| `ADMIN_IDS` | Yes | - | Comma-separated list of admin user IDs |
-| `MONGODB_URL` | No | `mongodb://mongo:27017` | MongoDB connection URL |
-| `DB_NAME` | No | `subwatch_bot` | Database name |
-| `GIGACHAT_CREDENTIALS` | No | - | GigaChat API credentials for enhanced NLP |
-| `WEBHOOK_URL` | No | - | Webhook URL (if using webhooks) |
+## 📝 .env.sample
+```
+BOT_TOKEN=your_telegram_bot_token
+GIGACHAT_TOKEN=your_gigachat_token
+MONGODB_URI=mongodb://mongo:27017
+DB_NAME=subwatch
+TZ=Asia/Jerusalem
+```
+
 | `WEBHOOK_PATH` | No | - | Webhook path (if using webhooks) |
 
 ## License
